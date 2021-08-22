@@ -64,3 +64,42 @@ void DiskDriver_init(DiskDriver* disk, const char* filename, int num_blocks) {
     }
 }
 
+int DiskDriver_readBlock(DiskDriver* disk, void* dest, int block_num) {
+    if (block_num >= disk->header->num_blocks || block_num < 0)
+        return -1;
+
+    BitMap bmap = {
+        .num_bits = disk->header->bitmap_blocks,
+        .entries = disk->bitmap_data
+    };
+    if (BitMap_get(&bmap, block_num, 0) == block_num)
+        return -1;
+    
+    void * blocks_start = disk->bitmap_data + disk->header->bitmap_entries;
+    memcpy(dest, blocks_start + block_num * BLOCK_SIZE, BLOCK_SIZE);
+    return 0;
+}
+
+int DiskDriver_writeBlock(DiskDriver* disk, void* src, int block_num) {
+    if (block_num >= disk->header->num_blocks || block_num < 0)
+        return -1;
+    
+    if (block_num == disk->header->first_free_block) 
+        disk->header->first_free_block = DiskDriver_getFreeBlock(disk, block_num + 1);
+
+    BitMap bmap = {
+        .num_bits = disk->header->bitmap_blocks,
+        .entries = disk->bitmap_data
+    };
+    if (BitMap_get(&bmap, block_num, 0) == block_num)
+        disk->header->free_blocks --;
+
+    if (BitMap_set(&bmap, block_num, 1) == -1)
+        return -1;
+
+    void * blocks_start = disk->bitmap_data + disk->header->bitmap_entries;
+    memcpy(blocks_start + block_num * BLOCK_SIZE, src, BLOCK_SIZE);
+    return 0;
+}
+
+
