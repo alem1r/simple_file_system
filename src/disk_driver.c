@@ -1,10 +1,15 @@
 #include <disk_driver.h>
+#include <common.h>
 
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <strings.h>
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>     
+#include <stdlib.h>    
 
 
 static void DiskDriver_initDiskHeader(DiskHeader* dh, int num_blocks, int bitmap_size, 
