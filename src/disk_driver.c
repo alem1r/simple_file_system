@@ -102,4 +102,56 @@ int DiskDriver_writeBlock(DiskDriver* disk, void* src, int block_num) {
     return 0;
 }
 
+int DiskDriver_freeBlock(DiskDriver* disk, int block_num) {
+    if (block_num >= disk->header->num_blocks || block_num < 0)
+        return -1;
+
+    BitMap bmap = {
+        .num_bits = disk->header->bitmap_blocks,
+        .entries = disk->bitmap_data
+    };
+    if (BitMap_set(&bmap, block_num, 0) == -1)
+        return -1;
+
+    disk->header->free_blocks ++;
+    disk->header->first_free_block = block_num < disk->header->first_free_block ? 
+                                        block_num : disk->header->first_free_block;
+    return 0;
+}
+
+int DiskDriver_getFreeBlock(DiskDriver* disk, int start) {
+    if (start >= disk->header->num_blocks)
+        return -1;
+    
+    BitMap bmap = {
+        .num_bits = disk->header->bitmap_blocks,
+        .entries = disk->bitmap_data
+    };
+    return BitMap_get(&bmap, start, 0);
+}
+
+int DiskDriver_flush(DiskDriver* disk) {
+    int ret;
+    int zone_size = sizeof(DiskHeader) + disk->header->bitmap_entries +  
+                        disk->header->num_blocks * BLOCK_SIZE;
+    ret = msync(disk->header, zone_size, MS_ASYNC);
+    if (ret == -1)
+        return -1;
+    return 0;
+}
+
+void DiskDriver_print(DiskDriver* disk) {
+    if (!disk)
+        return;
+    
+    printf("***** DISK INFO *****\n");
+    printf("Disk file descriptor: %d\n", disk->fd);
+    printf("Num blocks: %d\n", disk->header->num_blocks);
+    printf("Bitmap blocks: %d\n", disk->header->bitmap_blocks);
+    printf("Bitmap entries: %d\n", disk->header->bitmap_entries);
+    printf("Free blocks: %d\n", disk->header->free_blocks);
+    printf("First free block: %d\n", disk->header->first_free_block);
+    printf("*********************\n");
+}
+
 
