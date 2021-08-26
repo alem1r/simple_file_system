@@ -214,3 +214,44 @@ int SimpleFS_closeDir(DirectoryHandle* d) {
     return 0;
 }
 
+FileHandle* SimpleFS_openFile(DirectoryHandle* d, const char* filename) {
+
+    int block_num = SimpleFS_exists(d, filename);
+    if (block_num == 0) {
+        if (DEBUG) printf("[SFS - openFile] File doesn't exists.\n");
+        return NULL;
+    }
+
+    FirstFileBlock* ffb = calloc(1, sizeof(FirstFileBlock));
+    int ret = DiskDriver_readBlock(d->sfs->disk, ffb, block_num);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - openFile] Cannot read from disk.\n");
+        free(ffb);
+        return NULL;
+    }
+
+    if (ffb->fcb.is_dir == 1) {
+        if (DEBUG) printf("[SFS - openFile] Cannot open a directory.\n");
+        free(ffb);
+        return NULL;
+    }
+
+    FileHandle* new_fh = calloc(1, sizeof(FileHandle));
+    new_fh->sfs = d->sfs;
+    new_fh->fcb = ffb;
+    new_fh->directory = d->dcb;
+    new_fh->current_block = &ffb->header;
+    new_fh->pos_in_file = 0;
+
+    return new_fh;
+}
+
+int SimpleFS_closeFile(FileHandle* f) {
+
+    if (f->current_block != (BlockHeader*) f->fcb) 
+        free(f->current_block);
+    free(f->fcb);
+    free(f);
+    return 0;
+}
+
