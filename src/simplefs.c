@@ -142,3 +142,75 @@ int SimpleFS_createFile(DirectoryHandle* d, const char* filename) {
     }
     return 0;
 }
+int SimpleFS_readDir(char** names, DirectoryHandle* d) {
+ 
+    FirstDirectoryBlock* fdb = d->dcb;
+    int entries = fdb->num_entries;
+    int idx, ret;
+
+    for (idx = 0; idx < max_entries_fdb; idx++) {
+        if (idx >= entries)
+            return 0;
+        
+        FirstFileBlock ffb;
+        int block_num = fdb->file_blocks[idx];
+        ret = DiskDriver_readBlock(d->sfs->disk, &ffb, block_num);
+        if (ret == -1)
+            return -1;
+
+        names[idx] = strndup(ffb.fcb.name, 128);
+    }
+
+    entries -= idx;
+    DirectoryBlock db;
+    ret = DiskDriver_readBlock(d->sfs->disk, &db, fdb->header.next_block);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - createFile] Cannot read from disk.\n");
+        return 0;
+    }
+    for (idx = 0; idx < max_entries_db; idx++) {
+        if (idx >= entries)
+            return 0;
+
+        FirstFileBlock ffb;
+        int block_num = db.file_blocks[idx];
+        ret = DiskDriver_readBlock(d->sfs->disk, &ffb, block_num);
+        if (ret == -1)
+            return -1;
+        
+        int names_idx = max_entries_fdb + idx + max_entries_db * (db.header.block_in_file - 1); 
+        names[names_idx] = strndup(ffb.fcb.name, 128); 
+    }
+    entries -= idx;
+    while (db.header.next_block != -1) {
+        ret = DiskDriver_readBlock(d->sfs->disk, &db, db.header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - createFile] Cannot read from disk.\n");
+            return 0;
+        }
+        for (idx = 0; idx < max_entries_db; idx++) {
+            if (idx >= entries)
+                return 0;
+
+            FirstFileBlock ffb;
+            int block_num = db.file_blocks[idx];
+            ret = DiskDriver_readBlock(d->sfs->disk, &ffb, block_num);
+            if (ret == -1)
+                return -1;
+
+            int names_idx = max_entries_fdb + idx + max_entries_db * (db.header.block_in_file - 1); 
+            names[names_idx] = strndup(ffb.fcb.name, 128); 
+        }
+        entries -= idx;
+    }
+    return 0;
+}
+
+int SimpleFS_closeDir(DirectoryHandle* d) {
+    if (d->directory != NULL)
+        free(d->directory);
+    free(d->dcb);
+    free(d);
+    return 0;
+}
+
