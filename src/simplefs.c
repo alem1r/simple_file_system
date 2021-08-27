@@ -397,3 +397,91 @@ int SimpleFS_read(FileHandle* f, void* data, int size) {
         }
     }
 }
+int SimpleFS_changeDir(DirectoryHandle* d, char* dirname) {
+    
+    if (strcmp(d->dcb->fcb.name, dirname) == 0)
+        return 0;
+
+    if (strcmp(dirname, ".") == 0) 
+        return 0;
+
+    if (strcmp(dirname, "..") == 0) {
+        if (strcmp(d->dcb->fcb.name, "/") == 0)
+            return 0;
+
+        free(d->dcb);
+        d->dcb = d->directory;
+        d->directory = NULL;
+        d->current_block = &d->dcb->header;
+        d->pos_in_dir = 0;
+        d->pos_in_block = 0;
+        
+        int parent_block = d->dcb->fcb.directory_block;
+        if (parent_block != -1) {
+            FirstDirectoryBlock* fdb = calloc(1, sizeof(FirstDirectoryBlock));
+            int ret = DiskDriver_readBlock(d->sfs->disk, fdb, parent_block);
+            if (ret == -1) {
+                if (DEBUG) printf("[SFS - changeDir] Cannot read from disk.\n");
+                free(fdb);
+                return -1;
+            }
+
+            d->directory = fdb;
+        }
+
+        return 0;
+    }
+
+    if (strcmp(dirname, "/") == 0) {
+        free(d->dcb);    
+        free(d->directory);   
+
+        d->directory = NULL;
+
+        FirstDirectoryBlock* fdb = calloc(1, sizeof(FirstDirectoryBlock));
+        int ret = DiskDriver_readBlock(d->sfs->disk, fdb, 0);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - changeDir] Cannot read from disk.\n");
+            free(fdb);
+            return -1;
+        }
+
+        d->dcb = fdb;
+        d->current_block = &fdb->header;
+        d->pos_in_dir = 0;
+        d->pos_in_block = 0;
+
+        return 0;
+    }
+
+    int dir_block;
+    if ((dir_block = SimpleFS_exists(d, dirname))) {
+        if (d->directory != NULL)
+            free(d->directory);
+        d->directory = d->dcb;
+
+        FirstDirectoryBlock* fdb = calloc(1, sizeof(FirstDirectoryBlock));
+        int ret = DiskDriver_readBlock(d->sfs->disk, fdb, dir_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - changeDir] Cannot read from disk.\n");
+            free(fdb);
+            return -1;
+        }
+
+        if (fdb->fcb.is_dir == 0) {
+            free(fdb);
+            if (DEBUG) printf("[SFS - changeDir] Given dirname is not a directory.\n");
+            return -1;
+        }
+
+        d->dcb = fdb;
+        d->current_block = &fdb->header;
+        d->pos_in_dir = 0;
+        d->pos_in_block = 0;
+
+        return 0;
+    }
+
+    if (DEBUG) printf("[SFS - changeDir] Directory doesn't exists.\n");
+    return -1;
+}
