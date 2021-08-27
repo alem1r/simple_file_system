@@ -255,3 +255,145 @@ int SimpleFS_closeFile(FileHandle* f) {
     return 0;
 }
 
+int SimpleFS_write(FileHandle* f, void* data, int size) {
+
+    int free_space, ret;
+
+    if (f->current_block->block_in_file == 0)
+        free_space = max_data_ffb - f->pos_in_file;
+    else 
+        free_space = max_data_fb - ((f->pos_in_file - max_data_ffb) % max_data_fb);
+
+    if (size <= free_space) {
+        if (f->current_block->block_in_file == 0) {
+            memcpy(f->fcb->data + f->pos_in_file, data, size);
+        } 
+        else {
+            memcpy(((FileBlock*) f->current_block)->data + (max_data_fb - free_space), data, size);
+            ret = DiskDriver_writeBlock(f->sfs->disk, f->current_block, f->current_block->block_in_disk);
+            if (ret == -1) {
+                if (DEBUG) printf("[SFS - write] Cannot write on disk.\n");
+                return -1; 
+            }
+        }
+        f->pos_in_file += size;
+        f->fcb->fcb.size_in_bytes += size;
+
+        ret = DiskDriver_writeBlock(f->sfs->disk, f->fcb, f->fcb->header.block_in_disk);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - write] Cannot write on disk.\n");
+            return -1; 
+        }
+
+        return size;
+    }
+    else if (f->current_block->next_block != -1) {
+        if (f->current_block->block_in_file == 0) {
+            memcpy(f->fcb->data + f->pos_in_file, data, free_space);
+        } 
+        else {
+            memcpy(((FileBlock*) f->current_block)->data + (max_data_fb - free_space), data, free_space);
+            ret = DiskDriver_writeBlock(f->sfs->disk, (FileBlock*) f->current_block, f->current_block->block_in_disk);
+            if (ret == -1) {
+                if (DEBUG) printf("[SFS - write] Cannot write on disk.\n");
+                return -1; 
+            }
+        }
+
+        f->pos_in_file += free_space;
+        f->fcb->fcb.size_in_bytes += free_space;
+        f->fcb->fcb.size_in_blocks += 1;
+
+        FileBlock* next = calloc(1, sizeof(FileBlock));
+        ret = DiskDriver_readBlock(f->sfs->disk, next, f->current_block->next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - write] Cannot read from disk.\n");
+            return -1; 
+        }
+
+        if (f->current_block != (BlockHeader*) f->fcb)
+            free(f->current_block);
+
+        f->current_block = &next->header;
+        int written = SimpleFS_write(f, data + free_space, size - free_space);
+        if (written == -1) 
+            return -1;
+        return free_space + written;
+    }
+    else {
+        int free_block = DiskDriver_getFreeBlock(f->sfs->disk, 0);
+        if (free_block == -1) {
+            if (DEBUG) printf("[SFS - write] No free block.\n");
+            return -1;
+        }
+
+        FileBlock new_block = {0};
+        new_block.header.previous_block = f->current_block->block_in_disk;
+        new_block.header.next_block = -1;
+        new_block.header.block_in_file = f->current_block->block_in_file + 1;
+        new_block.header.block_in_disk = free_block;
+        
+        f->current_block->next_block = free_block;
+
+        ret = DiskDriver_writeBlock(f->sfs->disk, &new_block, free_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - write] Cannot write on disk.\n");
+            return -1; 
+        }
+
+        int written = SimpleFS_write(f, data, size);
+        if (written == -1)
+            return -1;
+        return written;
+    }
+}
+
+int SimpleFS_read(FileHandle* f, void* data, int size) {
+
+    int readable_bytes, ret;
+
+    if (f->current_block->block_in_file == 0) 
+        readable_bytes = max_data_ffb - f->pos_in_file;
+    else 
+        readable_bytes = max_data_fb - ((f->pos_in_file - max_data_ffb) % max_data_fb);
+
+    if (size <= readable_bytes) {
+        if (f->current_block->block_in_file == 0) 
+            memcpy(data, f->fcb->data, size);
+        else
+            memcpy(data, ((FileBlock*) f->current_block)->data, size);
+
+        f->pos_in_file += size;
+        return size;
+    }
+    else {
+        if (f->current_block->block_in_file == 0) 
+            memcpy(data, f->fcb->data, readable_bytes);
+        else
+            memcpy(data, ((FileBlock*) f->current_block)->data, readable_bytes);
+        f->pos_in_file += readable_bytes;
+
+        if (f->current_block->next_block != -1) {     
+
+            FileBlock* next = calloc(1, sizeof(FileBlock));
+            ret = DiskDriver_readBlock(f->sfs->disk, next, f->current_block->next_block);
+            if (ret == -1) {
+                if (DEBUG) printf("[SFS - read] Cannot read from disk.\n");
+                return -1; 
+            }
+
+            if (f->current_block != (BlockHeader*) f->fcb)
+                free(f->current_block);
+            
+            f->current_block = &next->header;
+
+            int read = SimpleFS_read(f, data + readable_bytes, size - readable_bytes);
+            if (read == -1)
+                return -1;
+            return readable_bytes + read;
+        }
+        else {
+            return readable_bytes;
+        }
+    }
+}
