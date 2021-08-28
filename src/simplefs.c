@@ -11,6 +11,112 @@ const int max_data_ffb = BLOCK_SIZE - sizeof(BlockHeader) -
                            sizeof(FileControlBlock);
 const int max_data_fb = BLOCK_SIZE - sizeof(BlockHeader);
 
+static int SimpleFS_exists(DirectoryHandle* d, const char* filename) {
+    
+    FirstDirectoryBlock* fdb = d->dcb;
+    int entries = fdb->num_entries;
+    int idx, ret;
+
+    for (idx = 0; idx < max_entries_fdb; idx++) {
+        if (idx >= entries)
+            return 0;
+        
+        FirstFileBlock ffb;
+        int block_num = fdb->file_blocks[idx];
+        ret = DiskDriver_readBlock(d->sfs->disk, &ffb, block_num);
+        if (ret == -1)
+            return 0;
+        
+        if (strncmp(ffb.fcb.name, filename, 128) == 0)
+            return ffb.header.block_in_disk;
+    }
+
+    entries -= idx;
+
+    if (entries == 0)
+        return 0;
+
+    DirectoryBlock db;
+    ret = DiskDriver_readBlock(d->sfs->disk, &db, fdb->header.next_block);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - exists] Cannot read from disk.\n");
+        return 0;
+    }
+    for (idx = 0; idx < max_entries_db; idx++) {
+        if (idx >= entries)
+            return 0;
+
+        FirstFileBlock ffb;
+        int block_num = db.file_blocks[idx];
+        ret = DiskDriver_readBlock(d->sfs->disk, &ffb, block_num);
+        if (ret == -1)
+            return 0;
+        
+        if (strncmp(ffb.fcb.name, filename, 128) == 0)
+            return ffb.header.block_in_disk;
+    }
+    entries -= idx;
+    while (db.header.next_block != -1) {
+        ret = DiskDriver_readBlock(d->sfs->disk, &db, db.header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - exists] Cannot read from disk.\n");
+            return 0;
+        }
+        for (idx = 0; idx < max_entries_db; idx++) {
+            if (idx >= entries)
+                return 0;
+
+            FirstFileBlock ffb;
+            int block_num = db.file_blocks[idx];
+            ret = DiskDriver_readBlock(d->sfs->disk, &ffb, block_num);
+            if (ret == -1)
+                return 0;
+
+            if (strncmp(ffb.fcb.name, filename, 128) == 0)
+                return ffb.header.block_in_disk;
+        }
+        entries -= idx;
+    }
+    return 0;
+}
+
+static int SimpleFS_removeDirBlock(DirectoryHandle* d, DirectoryBlock* b) {
+    if (b->header.next_block == -1) {
+        return DiskDriver_freeBlock(d->sfs->disk, b->header.block_in_disk);
+    }
+    else {
+        DirectoryBlock db = {0};
+        int ret = DiskDriver_readBlock(d->sfs->disk, &db, b->header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeDirBlock] Cannot read from disk.\n");
+            return -1;
+        }
+
+        SimpleFS_removeDirBlock(d, &db);
+        return DiskDriver_freeBlock(d->sfs->disk, b->header.block_in_disk);
+    }
+}
+
+static int SimpleFS_removeFileBlock(DirectoryHandle* d, FileBlock* b) {
+    if (b->header.next_block == -1) {
+        return DiskDriver_freeBlock(d->sfs->disk, b->header.block_in_disk);
+    }
+    else {
+        FileBlock fb = {0};
+        int ret = DiskDriver_readBlock(d->sfs->disk, &fb, b->header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFileBlock] Cannot read from disk.\n");
+            return -1;
+        }
+
+        SimpleFS_removeFileBlock(d, &fb);
+        return DiskDriver_freeBlock(d->sfs->disk, b->header.block_in_disk);
+    }
+}
+
+
+
+
 
 int SimpleFS_createFile(DirectoryHandle* d, const char* filename) {
 
