@@ -1,7 +1,7 @@
 #pragma once
 #include "bitmap.h"
 #include "disk_driver.h"
-
+#include <common.h>
 /*these are structures stored on disk*/
 
 // header, occupies the first portion of each block in the disk
@@ -10,6 +10,7 @@ typedef struct {
   int previous_block; // chained list (previous block)
   int next_block;     // chained list (next_block)
   int block_in_file; // position in the file, if 0 we have a file control block
+  int block_in_disk;
 } BlockHeader;
 
 
@@ -17,6 +18,7 @@ typedef struct {
 typedef struct {
   int directory_block; // first block of the parent directory
   int block_in_disk;   // repeated position of the block on the disk
+  int idx_in_directory;
   char name[128];
   int  size_in_bytes;
   int size_in_blocks;
@@ -100,7 +102,7 @@ void SimpleFS_format(SimpleFS* fs);
 // creates an empty file in the directory d
 // returns null on error (file existing, no free blocks)
 // an empty file consists only of a block of type FirstBlock
-FileHandle* SimpleFS_createFile(DirectoryHandle* d, const char* filename);
+int SimpleFS_createFile(DirectoryHandle* d, const char* filename);
 
 // reads in the (preallocated) blocks array, the name of all files in a directory 
 int SimpleFS_readDir(char** names, DirectoryHandle* d);
@@ -141,7 +143,7 @@ int SimpleFS_mkDir(DirectoryHandle* d, char* dirname);
 // removes the file in the current directory
 // returns -1 on failure 0 on success
 // if a directory, it removes recursively all contained files
-int SimpleFS_remove(SimpleFS* fs, char* filename);
+int SimpleFS_remove(DirectoryHandle* d, char* filename);
 
 
   
