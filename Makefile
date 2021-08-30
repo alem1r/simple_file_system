@@ -1,27 +1,31 @@
-CCOPTS= -Wall -g -std=gnu99 -Wstrict-prototypes
-LIBS= 
+DINCLUDE=./include
+DSRC=./src
+
 CC=gcc
-AR=ar
+CFLAGS=-Wall -g -std=gnu99 -Wstrict-prototypes -I$(DINCLUDE)
+
+HEADERS=$(wildcard $(DINCLUDE)/*)
+SRC=$(wildcard $(DSRC)/*.c)
+OBJ=$(patsubst %.c,%.o,$(wildcard $(DSRC)/*.c))
+
+.PHONY: clean all
+
+all: $(OBJ) sh test 
+
+%.o: %.c $(HEADERS)
+	$(CC) -c -o $@ $< $(CFLAGS)
 
 
-BINS= simplefs_test
 
-OBJS = #add here your object files
-
-HEADERS=bitmap.h\
-	disk_driver.h\
-	simplefs.h
-
-%.o:	%.c $(HEADERS)
-	$(CC) $(CCOPTS) -c -o $@  $<
-
-.phony: clean all
+run_shell:
+	make -s -C ./shell run
 
 
-all:	$(BINS) 
 
-so_game: simplefs_test.c $(OBJS) 
-	$(CC) $(CCOPTS)  -o $@ $^ $(LIBS)
+sh:
+	make -C ./shell
 
 clean:
-	rm -rf *.o *~  $(BINS)
+	make -C ./tests clean
+	make -C ./shell clean
+	rm -rf $(DSRC)/*.o
