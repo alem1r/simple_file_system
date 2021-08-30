@@ -114,6 +114,160 @@ static int SimpleFS_removeFileBlock(DirectoryHandle* d, FileBlock* b) {
     }
 }
 
+static int SimpleFS_removeFile(DirectoryHandle* d, FirstFileBlock* ffb) {
+
+    int ret;
+
+    FirstDirectoryBlock* fdb_parent = d->dcb;
+
+    int current_block_idx;
+    if (ffb->fcb.idx_in_directory <= max_entries_fdb)
+        current_block_idx = 0;
+    else 
+        current_block_idx = (ffb->fcb.idx_in_directory - max_entries_fdb) / max_entries_db;
+
+    if (current_block_idx == 0) {
+        fdb_parent->num_entries -= 1;
+        fdb_parent->file_blocks[ffb->fcb.idx_in_directory] = fdb_parent->file_blocks[fdb_parent->num_entries];
+    }
+    else { 
+        DirectoryBlock last_block, current_block;
+        ret = DiskDriver_readBlock(d->sfs->disk, &last_block, fdb_parent->header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot read from disk.\n");
+            return -1;
+        }
+        if (last_block.header.block_in_file == current_block_idx) 
+            current_block = last_block;
+        while (last_block.header.next_block != -1) {
+            ret = DiskDriver_readBlock(d->sfs->disk, &last_block, last_block.header.next_block);
+            if (ret == -1) {
+                if (DEBUG) printf("[SFS - removeFile] Cannot read from disk.\n");
+                return -1;
+            }
+            if (last_block.header.block_in_file == current_block_idx) 
+                current_block = last_block;
+        }
+
+        fdb_parent->num_entries -= 1;
+        int idx_inside_last_block = (fdb_parent->num_entries - max_entries_fdb) % max_entries_db;
+        int idx_inside_current_block = (ffb->fcb.idx_in_directory - max_entries_fdb) % max_entries_db;
+
+        current_block.file_blocks[idx_inside_current_block] = last_block.file_blocks[idx_inside_last_block];
+        
+        ret = DiskDriver_writeBlock(d->sfs->disk, &last_block, last_block.header.block_in_disk);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot write on disk.\n");
+            return -1; 
+        }
+        ret = DiskDriver_writeBlock(d->sfs->disk, &current_block, current_block.header.block_in_disk);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot write on disk.\n");
+            return -1; 
+        }
+
+    }
+    ret = DiskDriver_writeBlock(d->sfs->disk, fdb_parent, fdb_parent->header.block_in_disk);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - removeFile] Cannot write on disk.\n");
+        return -1; 
+    }
+
+    ret = DiskDriver_freeBlock(d->sfs->disk, ffb->header.block_in_disk);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - removeFile] Cannot free block on disk.\n");
+        return -1;
+    }
+    if (ffb->header.next_block != -1) {
+        FileBlock fb = {0};
+        ret = DiskDriver_readBlock(d->sfs->disk, &fb, ffb->header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot read from disk.\n");
+            return -1;
+        }
+
+        return SimpleFS_removeFileBlock(d, &fb); 
+    }
+    return 0;
+}
+
+static int SimpleFS_removeDir(DirectoryHandle* d, FirstDirectoryBlock* fdb) {
+    
+    int ret;
+
+    FirstDirectoryBlock* fdb_parent = d->dcb;
+
+    int current_block_idx;
+    if (fdb->fcb.idx_in_directory <= max_entries_fdb)
+        current_block_idx = 0;
+    else 
+        current_block_idx = (fdb->fcb.idx_in_directory - max_entries_fdb) / max_entries_db;
+
+    if (current_block_idx == 0) {
+        fdb_parent->num_entries -= 1;
+        fdb_parent->file_blocks[fdb->fcb.idx_in_directory] = fdb_parent->file_blocks[fdb_parent->num_entries];
+    }
+    else { 
+        DirectoryBlock last_block, current_block;
+        ret = DiskDriver_readBlock(d->sfs->disk, &last_block, fdb_parent->header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot read from disk.\n");
+            return -1;
+        }
+        if (last_block.header.block_in_file == current_block_idx) 
+            current_block = last_block;
+        while (last_block.header.next_block != -1) {
+            ret = DiskDriver_readBlock(d->sfs->disk, &last_block, last_block.header.next_block);
+            if (ret == -1) {
+                if (DEBUG) printf("[SFS - removeFile] Cannot read from disk.\n");
+                return -1;
+            }
+            if (last_block.header.block_in_file == current_block_idx) 
+                current_block = last_block;
+        }
+
+        fdb_parent->num_entries -= 1;
+        int idx_inside_last_block = (fdb_parent->num_entries - max_entries_fdb) % max_entries_db;
+        int idx_inside_current_block = (fdb->fcb.idx_in_directory - max_entries_fdb) % max_entries_db;
+
+        current_block.file_blocks[idx_inside_current_block] = last_block.file_blocks[idx_inside_last_block];
+        
+        ret = DiskDriver_writeBlock(d->sfs->disk, &last_block, last_block.header.block_in_disk);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot write on disk.\n");
+            return -1; 
+        }
+        ret = DiskDriver_writeBlock(d->sfs->disk, &current_block, current_block.header.block_in_disk);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot write on disk.\n");
+            return -1; 
+        }
+
+    }
+    ret = DiskDriver_writeBlock(d->sfs->disk, fdb_parent, fdb_parent->header.block_in_disk);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - removeFile] Cannot write on disk.\n");
+        return -1; 
+    }
+
+    ret = DiskDriver_freeBlock(d->sfs->disk, fdb->header.block_in_disk);
+    if (ret == -1) {
+        if (DEBUG) printf("[SFS - removeFile] Cannot free block on disk.\n");
+        return -1;
+    }
+    if (fdb->header.next_block != -1) {
+        DirectoryBlock db = {0};
+        ret = DiskDriver_readBlock(d->sfs->disk, &db, fdb->header.next_block);
+        if (ret == -1) {
+            if (DEBUG) printf("[SFS - removeFile] Cannot read from disk.\n");
+            return -1;
+        }
+
+        return SimpleFS_removeDirBlock(d, &db); 
+    }
+    return 0;
+}
+
 
 
 DirectoryHandle* SimpleFS_init(SimpleFS* fs, DiskDriver* disk) {
