@@ -133,6 +133,77 @@ void ls(int argc, char* argv[MAX_ARGUMENTS_NUM + 1]) {
     free(names);
 }
 
+/*
+ * Removes a file or an empty dir from the file system.
+ */
+void rm(int argc, char* argv[MAX_ARGUMENTS_NUM + 1]) {
+
+    if (argc != 2) {
+        printf("Usage: rm <filename>\n");
+        return;
+    }
+
+    int ret = SimpleFS_remove(current_dir, argv[1]);
+    if (ret == -1) 
+        fprintf(stderr, "An error occurred in removing.\n");
+}
+
+/*
+ * Removes a dir even if it is not empty.
+ */
+void rmf_aux(DirectoryHandle* p, char* name) {
+    
+    int ret = SimpleFS_remove(p, name);
+    if (ret == -1) {
+        ret = SimpleFS_changeDir(p, name);
+        if (ret == -1) {
+            fprintf(stderr, "An error occurred while changing dir.\n");
+            return; 
+        }
+
+        int i;
+        char** names = calloc(p->dcb->num_entries, sizeof(char*));
+        int ret = SimpleFS_readDir(names, p);
+        if (ret == -1) {
+            fprintf(stderr, "An error occurred while listing files and dirs.\n");
+            for (i = 0; i < p->dcb->num_entries; i++) 
+                free(names[i]);   
+            free(names);
+            return;
+        }
+
+        int entries = p->dcb->num_entries;
+        for (i = 0; i < entries; i++) { 
+            rmf_aux(p, names[i]);
+        }
+
+        SimpleFS_changeDir(p, "..");
+
+        for (i = 0; i < entries; i++) 
+            free(names[i]);   
+        free(names);
+
+        ret = SimpleFS_remove(p, name);
+        if (ret == -1)      
+            fprintf(stderr, "An error occurred in removing.\n");
+    }
+}
+
+void rmf(int argc, char* argv[MAX_ARGUMENTS_NUM + 1]) {
+
+    if (argc != 2) {
+        printf("Usage: rmf <dirname>\n");
+        return;
+    }
+    
+    if (strcmp(argv[1], "/") == 0) {
+        printf("Maybe another day\n");
+        return;
+    }
+
+    DirectoryHandle* parent = current_dir;
+    rmf_aux(parent, argv[1]);
+}
 
 void help(int argc, char* argv[MAX_ARGUMENTS_NUM + 1]) {
     
@@ -143,11 +214,12 @@ void help(int argc, char* argv[MAX_ARGUMENTS_NUM + 1]) {
     printf("Available commands:\n");
     printf("format: formats the disk.\n");
     printf("mkdir: create a new directory in the current one.\n");
-    printf("write: enables to write into an existing file.\n");
     printf("cat: prints out the content of an existing file.\n");
     printf("touch: create a new empty file in the current directory.\n");
     printf("cd: change the current directory.\n");
     printf("ls: list all the files in the current directory.\n");
+    printf("rm: remove a file or an empty directory.\n");
+    printf("rmf: remove a file or a not empty directory.\n");
     printf("help: command inception.\n");
     printf("exit: exit the shell.\n");
 }
@@ -189,6 +261,12 @@ void do_command_loop(void) {
             ls(argc, argv); 
         }
        
+        else if (strcmp(argv[0], "rm") == 0) {
+            rm(argc, argv); 
+        }
+        else if (strcmp(argv[0], "rmf") == 0) {
+            rmf(argc, argv); 
+        }
         
         else if (strcmp(argv[0], "help") == 0) {
             help(argc, argv); 
@@ -207,7 +285,7 @@ void do_command_loop(void) {
 
 int main(int argc, char * argv[]) {
  
-    DiskDriver_init(&disk, "prova", 2048);
+    DiskDriver_init(&disk, "FS", 2048);
     
     current_dir = SimpleFS_init(&fs, &disk);
     if (current_dir == NULL) {
