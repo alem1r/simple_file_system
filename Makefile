@@ -10,7 +10,7 @@ OBJ=$(patsubst %.c,%.o,$(wildcard $(DSRC)/*.c))
 
 .PHONY: clean all
 
-all: $(OBJ) sh test 
+all: $(OBJ) sh 
 
 %.o: %.c $(HEADERS)
 	$(CC) -c -o $@ $< $(CFLAGS)
@@ -26,6 +26,5 @@ sh:
 	make -C ./shell
 
 clean:
-	make -C ./tests clean
 	make -C ./shell clean
 	rm -rf $(DSRC)/*.o

@@ -8,7 +8,7 @@ SRC=$(wildcard *.c)
 BINS=$(SRC:.c=)
 OBJ=$(wildcard $(DSRC)/*.o)
 
-.phony: clean all tests
+
 
 all: $(BINS)
 
